@@ -1,4 +1,4 @@
-# Claim Verifier - Authentication System
+# TRUTHSEEKER - Authentication System
 
 This application now includes a complete authentication system with login and signup functionality, and **user-specific verification logs**.
 
