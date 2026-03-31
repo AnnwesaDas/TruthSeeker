@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # Truth Seeker - Authentication System
+=======
+# TRUTHSEEKER - Authentication System
+>>>>>>> afaae6242de46289ac0b33a89d59ca1fb5fb16e7
 
 This application now includes a complete authentication system with login and signup functionality, and **user-specific verification logs**.
 
