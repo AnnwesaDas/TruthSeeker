@@ -59,7 +59,7 @@ export default function LandingPage() {
     }
 
     try {
-      const res = await fetch("https://my-backend-app-latest-hvrn.onrender.com/api/verify-event", {
+      const res = await fetch("http://localhost:3000/api/verify-event", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

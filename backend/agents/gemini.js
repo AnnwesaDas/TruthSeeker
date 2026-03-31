@@ -2,10 +2,11 @@ const axios = require('axios');
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 let response;
 async function extractEventInfo(claim) {
-    
+     
     try {
         const prompt = `Extract the event name, location, and time from this claim: "${claim}". Respond in JSON with keys: event, location, time.`;
         response = await axios.post(
@@ -61,6 +62,7 @@ Respond with one of: Occurred, Unlikely, Unverified. Also provide a short reason
         console.log(text);
         return text;
     } catch (err) {
+        console.log(err)
         console.error('Gemini verifyClaimWithEvidence error:', err.message);
         return 'Unverified: Error during verification.';
     }

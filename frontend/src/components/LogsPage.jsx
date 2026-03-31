@@ -22,7 +22,7 @@ export default function LogsPage() {
       }
 
       try {
-        const res = await fetch("https://my-backend-app-latest-hvrn.onrender.com/api/verify-event/logs", {
+        const res = await fetch("http://localhost:3000/api/verify-event/logs", {
           headers: {
             "Authorization": `Bearer ${token}`
           }

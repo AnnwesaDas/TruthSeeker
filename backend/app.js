@@ -54,7 +54,7 @@ wss.on('connection', (ws, req) => {
                         timestamp: new Date().toISOString()
                     }));
             }
-        } catch (error) {
+        } catch (error) { 
             console.error('Error processing message:', error);
             ws.send(JSON.stringify({
                 type: 'error',

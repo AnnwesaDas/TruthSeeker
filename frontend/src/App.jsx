@@ -51,7 +51,7 @@ const AppContent = () => {
                   className="text-2xl font-bold text-white font-inter"
                   style={{ marginLeft: '0.2cm' }}
                 >
-                  CLAIM VERIFIER
+                  TRUTH SEEKER
                 </span>
               </div>
 
