@@ -28,7 +28,7 @@ const sendWsMessage = (message) => {
 router.post('/', authenticateToken, async (req, res, next) => {
     console.log('Received request');
     try {
-        const { claim } = req.body;
+        const claim = String(req.body?.claim || '').trim();
         if (!claim) return res.status(400).json({ error: 'Missing claim' });
 
         // Send initial status
@@ -99,6 +99,13 @@ router.post('/', authenticateToken, async (req, res, next) => {
         });
 
         // Send completion message
+        sendWsMessage({
+            type: 'verification_complete',
+            message: 'Verification complete!',
+            progress: 100,
+            timestamp: new Date().toISOString()
+        });
+
         sendWsMessage({
             type: 'status_update',
             message: 'Verification complete!',

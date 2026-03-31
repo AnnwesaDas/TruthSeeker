@@ -98,6 +98,7 @@ export default function VerifyPage() {
 
   const parseVerification = (verification) => {
     if (!verification) return null
+    if (typeof verification === "object") return verification
     try {
       return JSON.parse(verification)
     } catch {
@@ -107,10 +108,12 @@ export default function VerifyPage() {
 
   const getVerificationIcon = (result) => {
     switch (result?.toLowerCase()) {
+      case "occurred":
       case "true":
       case "verified":
       case "likely_true":
         return <CheckCircle className="h-6 w-6 text-[#8db5de]" />
+      case "unlikely":
       case "false":
       case "false claim":
       case "likely_false":
@@ -122,10 +125,12 @@ export default function VerifyPage() {
 
   const getVerificationColor = (result) => {
     switch (result?.toLowerCase()) {
+      case "occurred":
       case "true":
       case "verified":
       case "likely_true":
         return "bg-[#8db5de]/15 border-[#8db5de]/50 text-[#8db5de] shadow-[#8db5de]/40"
+      case "unlikely":
       case "false":
       case "false claim":
       case "likely_false":

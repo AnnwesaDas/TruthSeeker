@@ -1,6 +1,13 @@
 const puppeteer = require('puppeteer');
 const { getTrustedSourcesForClaim } = require('../agents/gemini');
 
+function extractDomainsFromQuery(query) {
+    const matches = query.match(/site:([^\s]+)/g) || [];
+    return matches
+        .map((entry) => entry.replace(/^site:/, '').trim().toLowerCase())
+        .filter(Boolean);
+}
+
 // Remove or comment out static TRUSTED_DOMAINS usage
 // const TRUSTED_DOMAINS = [
 //     'bbc.com',
@@ -51,17 +58,18 @@ async function scrapeGoogleFactChecker(query) {
     } catch (err) {
         console.error('Google Fact Checker scraping error:', err.message);
     } finally {
-        // if (browser) await browser.close();
+        if (browser) await browser.close();
     }
     return results;
 }
 
 async function searchAndScrape(query) {
     console.log('Searching and scraping with query:', query);
-    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-    const page = await browser.newPage();
+    let browser;
     let results = [];
     try {
+        browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+        const page = await browser.newPage();
         await page.goto('https://search.yahoo.com/', { waitUntil: 'networkidle2', timeout: 30000 });
 
         // Wait for the Yahoo search box
@@ -73,8 +81,6 @@ async function searchAndScrape(query) {
         ]);
 
         // Get Yahoo organic result links
-        const html = await page.content();
-        console.log(html);
         const linkHandles = await page.$$('ol > li > div > div:nth-child(1) > a');
         let links = [];
         for (const handle of linkHandles) {
@@ -82,13 +88,16 @@ async function searchAndScrape(query) {
             links.push(href);
         }
         console.log('All found links:', links);
-        // Get trusted domains dynamically
+        // Reuse domains already added by query-builder when present.
         let trustedDomains = [];
-        try {
-            trustedDomains = await getTrustedSourcesForClaim(query);
-            console.log('Dynamic trusted domains:', trustedDomains);
-        } catch (err) {
-            console.error('Error getting trusted domains:', err.message);
+        trustedDomains = extractDomainsFromQuery(query);
+        if (trustedDomains.length === 0) {
+            try {
+                trustedDomains = await getTrustedSourcesForClaim(query);
+                console.log('Dynamic trusted domains:', trustedDomains);
+            } catch (err) {
+                console.error('Error getting trusted domains:', err.message);
+            }
         }
         // Filter by dynamic trusted domains
         if (trustedDomains && trustedDomains.length > 0) {
@@ -120,8 +129,7 @@ async function searchAndScrape(query) {
     } catch (err) {
         console.error('Puppeteer DuckDuckGo search error:', err.message);
     } finally {
-        // await browser.close(); // Commented out to keep the browser window open for debugging
-        // Remember to close the browser manually when done debugging!
+        if (browser) await browser.close();
     }
     // Scrape Google Fact Checker and merge results
     const factCheckResults = await scrapeGoogleFactChecker(query);
