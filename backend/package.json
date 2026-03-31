@@ -5,7 +5,9 @@
   "scripts": {
     "start": "nodemon app.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "check:gemini:ping": "node scripts/gemini-smoke.js",
+    "check:gemini:flow": "node scripts/gemini-integration-check.js"
   },
   "dependencies": {
     "axios": "^1.6.7",
