@@ -7,3 +7,6 @@
 backend/.env
 backend/.env.*
 !backend/.env.example
+
+# Local assistant workspace
+.claude/
