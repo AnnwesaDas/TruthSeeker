@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 const router = express.Router();
 const gemini = require('../agents/gemini');
 const buildSearchQuery = require('../utils/searchQueryBuilder');
@@ -6,7 +7,6 @@ const { searchAndScrape } = require('../utils/scraper');
 const mongoose = require('mongoose');
 const VerificationEvent = require('../models/VerificationEvent');
 const { authenticateToken } = require('../utils/auth');
-const axios = require('axios');
 
 async function getBertScore(claim) {
     try {
@@ -93,7 +93,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        const verification = await gemini.verifyClaimWithEvidence(claim, scrapedResults);
+        const verification = await gemini.verifyClaimWithEvidence(claim, scrapedResults, bertResult);
 
         // 5. Save to MongoDB with user email
         sendWsMessage({

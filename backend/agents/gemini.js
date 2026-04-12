@@ -108,10 +108,14 @@ async function getTrustedSourcesForClaim(claim) {
         return [];
     }
 }
-async function verifyClaimWithEvidence(claim, evidence) {
+async function verifyClaimWithEvidence(claim, evidence, bertResult = null) {
     console.log('Gemini verifyClaimWithEvidence IN:', claim, evidence);
     try {
-        const prompt = `Given the following claim: "${claim}"
+        const bertLine = bertResult && bertResult.label !== 'unknown'
+            ? `\nML model pre-classification: "${bertResult.label}" with ${Math.round(bertResult.confidence * 100)}% confidence.`
+            : '';
+
+        const prompt = `Given the following claim: "${claim}"${bertLine}
 And the following evidence from trusted news sources:
 ${JSON.stringify(evidence, null, 2)}
 
