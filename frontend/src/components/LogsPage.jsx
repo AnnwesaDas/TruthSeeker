@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2, AlertTriangle, CheckCircle, XCircle, ExternalLink } from "lucide-react"
+import { API_URL } from "../lib/config"
 
 export default function LogsPage() {
   const [logs, setLogs] = useState([])
@@ -22,7 +23,7 @@ export default function LogsPage() {
       }
 
       try {
-        const res = await fetch("http://localhost:3000/api/verify-event/logs", {
+        const res = await fetch(`${API_URL}/api/verify-event/logs`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }

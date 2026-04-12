@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useWebSocket } from "../hooks/useWebSocket"
+import { API_URL } from "../lib/config"
 import {
   Search,
   CheckCircle,
@@ -73,7 +74,7 @@ export default function VerifyPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:3000/api/verify-event", {
+      const res = await fetch(`${API_URL}/api/verify-event`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

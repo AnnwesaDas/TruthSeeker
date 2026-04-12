@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import BlobVideoBackground from "./BlobVideoBackground"
 import ParticleBackground from "./ui/ParticleBackground"
+import { API_URL } from "../lib/config"
 
 export default function LandingPage() {
   const [claim, setClaim] = useState("")
@@ -59,7 +60,7 @@ export default function LandingPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:3000/api/verify-event", {
+      const res = await fetch(`${API_URL}/api/verify-event`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

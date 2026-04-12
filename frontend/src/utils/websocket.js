@@ -1,5 +1,7 @@
+import { WS_URL } from '../lib/config';
+
 class WebSocketClient {
-    constructor(url = 'ws://localhost:3000') {
+    constructor(url = WS_URL) {
         this.url = url;
         this.ws = null;
         this.isConnected = false;
