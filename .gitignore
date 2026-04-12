@@ -10,3 +10,6 @@ backend/.env.*
 
 # Local assistant workspace
 .claude/
+
+# Large ML model files (too big for git)
+bert-liar-model/

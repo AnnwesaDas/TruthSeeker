@@ -6,6 +6,17 @@ const { searchAndScrape } = require('../utils/scraper');
 const mongoose = require('mongoose');
 const VerificationEvent = require('../models/VerificationEvent');
 const { authenticateToken } = require('../utils/auth');
+const axios = require('axios');
+
+async function getBertScore(claim) {
+    try {
+        const response = await axios.post('http://localhost:5001/predict', { claim });
+        return response.data; // { label: "fake"/"real", confidence: 0.73 }
+    } catch (err) {
+        console.warn('BERT API unavailable:', err.message);
+        return { label: 'unknown', confidence: 0 };
+    }
+}
 
 // Get WebSocket clients from app.js
 let wsClients = null;
@@ -30,6 +41,8 @@ router.post('/', authenticateToken, async (req, res, next) => {
     try {
         const claim = String(req.body?.claim || '').trim();
         if (!claim) return res.status(400).json({ error: 'Missing claim' });
+        const bertResult = await getBertScore(claim);
+        console.log('BERT score:', bertResult);
 
         // Send initial status
         sendWsMessage({
@@ -118,6 +131,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
             extraction,
             evidence: scrapedResults,
             verification,
+            bertResult,
             id: savedEvent._id
         });
     } catch (err) {
