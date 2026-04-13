@@ -25,9 +25,7 @@ const ParticleBackground = (props) => {
         });
     }, []);
 
-    const particlesLoaded = (container) => {
-        console.log(container);
-    };
+    const particlesLoaded = () => {};
 
 
     const options = useMemo(
