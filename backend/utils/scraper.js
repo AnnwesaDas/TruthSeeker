@@ -1,140 +1,104 @@
-const puppeteer = require('puppeteer');
-const { getTrustedSourcesForClaim } = require('../agents/gemini');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
-function extractDomainsFromQuery(query) {
-    const matches = query.match(/site:([^\s]+)/g) || [];
-    return matches
-        .map((entry) => entry.replace(/^site:/, '').trim().toLowerCase())
-        .filter(Boolean);
+const FACTCHECK_API_URL = 'https://factchecktools.googleapis.com/v1alpha1/claims:search';
+const CUSTOM_SEARCH_API_URL = 'https://www.googleapis.com/customsearch/v1';
+const REQUEST_TIMEOUT_MS = 10000;
+
+// Official Google Fact Check Tools API — replaces scraping toolbox.google.com/factcheck/explorer.
+async function fetchFactChecks(query) {
+    const apiKey = process.env.GOOGLE_FACTCHECK_API_KEY;
+    if (!apiKey) {
+        console.warn('GOOGLE_FACTCHECK_API_KEY not configured — skipping Fact Check Tools API.');
+        return [];
+    }
+
+    try {
+        const response = await axios.get(FACTCHECK_API_URL, {
+            params: { query, key: apiKey, languageCode: 'en' },
+            timeout: REQUEST_TIMEOUT_MS,
+        });
+        const claims = response.data?.claims || [];
+        return claims.slice(0, 5).map((claim) => {
+            const review = claim.claimReview?.[0] || {};
+            return {
+                source: 'Google Fact Check',
+                headline: review.title || claim.text || '',
+                publisher: review.publisher?.name || '',
+                claim: claim.text || '',
+                verdict: review.textualRating || '',
+                link: review.url || '',
+                snippet: review.title || claim.text || '',
+            };
+        });
+    } catch (err) {
+        console.error('Fact Check Tools API error:', err.message);
+        return [];
+    }
 }
 
-// Remove or comment out static TRUSTED_DOMAINS usage
-// const TRUSTED_DOMAINS = [
-//     'bbc.com',
-//     'reuters.com',
-//     'indiatimes.com',
-//     'gov.in',
-// ];
-
-async function scrapeGoogleFactChecker(query) {
-    const results = [];
-    let browser;
-    query = query.replace(/(\s*OR\s*)?site:[^\s]+/g, '').trim();
- 
-    console.log(query);
-    try {
-        browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-        const page = await browser.newPage();
-        await page.goto('https://toolbox.google.com/factcheck/explorer', { waitUntil: 'networkidle2', timeout: 30000 });
-        await page.waitForSelector('input#search-input[name="query"]', { timeout: 10000 });
-        await page.type('input#search-input[name="query"]', query);
-        await Promise.all([
-            page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-        ]);
-        // Wait for results to load
-        await page.waitForTimeout(2000);
-        console.log('Google Fact Checker results loaded');
-        const factChecks = await page.evaluate(() => {
-            // The path: /html/body/fact-check-tools/div/mat-sidenav-container/mat-sidenav-content/div/search-results-page/div/div[4]/fc-results-list/div[1]/div
-            // We'll select all fact divs under fc-results-list
-            const factDivs = document.querySelectorAll('fc-results-list > div > div');
-            console.log("factDivs", factDivs);
-            return Array.from(factDivs).slice(0, 5).map(div => {
-                // extract headline, publisher, claim, verdict, link, etc.
-                const headline = div.querySelector('.snippet-title')?.innerText || '';
-                const publisher = div.querySelector('div:nth-child(3) > div:nth-child(3) > div > span > span:nth-child(1)')?.innerText || '';
-                const claim = div.querySelector('div:nth-child(3) > div:nth-child(2)')?.innerText || '';
-                const verdict = div.querySelector('.rating')?.innerText || '';
-                const link = div.querySelector('div:nth-child(3) > div:nth-child(3) > div > div:nth-child(2) a')?.href || '';
-                console.log('Google Fact Checker result:', { source: 'Google Fact Check', headline, publisher, claim, verdict, link });
-                return { source: 'Google Fact Check', headline, publisher, claim, verdict, link };
-            });
-        });
-        console.log('Number of fact checks found:', factChecks.length);
-        console.log('factChecks', factChecks);
-        results.push(...factChecks);
-        await page.close();
-    } catch (err) {
-        console.error('Google Fact Checker scraping error:', err.message);
-    } finally {
-        if (browser) await browser.close();
+// Optional: Google Programmable Search Engine, restricted to trusted domains.
+// Degrades gracefully (returns []) when not configured, same pattern as the BERT fallback.
+async function searchTrustedNews(query, trustedDomains) {
+    const apiKey = process.env.GOOGLE_CSE_API_KEY;
+    const cx = process.env.GOOGLE_CSE_ID;
+    if (!apiKey || !cx) {
+        console.warn('GOOGLE_CSE_API_KEY/GOOGLE_CSE_ID not configured — skipping general news search.');
+        return [];
     }
+
+    try {
+        const siteFilter = trustedDomains && trustedDomains.length > 0
+            ? ' ' + trustedDomains.map((domain) => `site:${domain}`).join(' OR ')
+            : '';
+        const response = await axios.get(CUSTOM_SEARCH_API_URL, {
+            params: { key: apiKey, cx, q: `${query}${siteFilter}`, num: 5 },
+            timeout: REQUEST_TIMEOUT_MS,
+        });
+        const items = response.data?.items || [];
+        return items.map((item) => ({ link: item.link, snippet: item.snippet || '' }));
+    } catch (err) {
+        console.error('Custom Search API error:', err.message);
+        return [];
+    }
+}
+
+// Lightweight HTTP fetch + HTML parse instead of a full headless browser per link.
+async function fetchArticleSnippet(link) {
+    try {
+        const response = await axios.get(link, {
+            timeout: REQUEST_TIMEOUT_MS,
+            maxContentLength: 2 * 1024 * 1024,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TruthSeekerBot/1.0)' },
+        });
+        const $ = cheerio.load(response.data);
+        const meta = $('meta[name="description"]').attr('content');
+        if (meta && meta.trim()) return meta.trim();
+        const firstParagraph = $('p').first().text().trim();
+        return firstParagraph ? firstParagraph.slice(0, 500) : '';
+    } catch (err) {
+        return 'Failed to fetch article content.';
+    }
+}
+
+async function searchAndScrape(query, trustedDomains = []) {
+    console.log('Searching and scraping with query:', query);
+
+    const [factChecks, newsResults] = await Promise.all([
+        fetchFactChecks(query),
+        searchTrustedNews(query, trustedDomains),
+    ]);
+
+    const enrichedNews = await Promise.all(
+        newsResults.map(async (item) => {
+            if (item.snippet && item.snippet.length > 20) return item;
+            return { ...item, snippet: await fetchArticleSnippet(item.link) };
+        })
+    );
+
+    const results = [...enrichedNews, ...factChecks];
+    console.log('Number of evidence items found:', results.length);
     return results;
 }
 
-async function searchAndScrape(query) {
-    console.log('Searching and scraping with query:', query);
-    let browser;
-    let results = [];
-    try {
-        browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-        const page = await browser.newPage();
-        await page.goto('https://search.yahoo.com/', { waitUntil: 'networkidle2', timeout: 30000 });
-
-        // Wait for the Yahoo search box
-        await page.waitForSelector('input[name="p"]', { timeout: 10000 }); 
-        await page.type('input[name="p"]', query);
-        await Promise.all([
-            page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }),
-        ]);
-
-        // Get Yahoo organic result links
-        const linkHandles = await page.$$('ol > li > div > div:nth-child(1) > a');
-        let links = [];
-        for (const handle of linkHandles) {
-            const href = await page.evaluate(a => a.href, handle);
-            links.push(href);
-        }
-        console.log('All found links:', links);
-        // Reuse domains already added by query-builder when present.
-        let trustedDomains = [];
-        trustedDomains = extractDomainsFromQuery(query);
-        if (trustedDomains.length === 0) {
-            try {
-                trustedDomains = await getTrustedSourcesForClaim(query);
-                console.log('Dynamic trusted domains:', trustedDomains);
-            } catch (err) {
-                console.error('Error getting trusted domains:', err.message);
-            }
-        }
-        // Filter by dynamic trusted domains
-        if (trustedDomains && trustedDomains.length > 0) {
-            links = links.filter(link => trustedDomains.some(domain => link.includes(domain)));
-        } else {
-            console.warn('No trusted domains found, skipping domain filtering.');
-        }
-        links = Array.from(new Set(links)).slice(0, 5);
-        console.log('Filtered trusted links:', links);
-
-        for (const link of links) {
-            try {
-                const newPage = await browser.newPage();
-                await newPage.goto(link, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                // Try to get meta description or first paragraph
-                const snippet = await newPage.evaluate(() => {
-                    const meta = document.querySelector('meta[name="description"]');
-                    if (meta && meta.content) return meta.content;
-                    const p = document.querySelector('p');
-                    if (p) return p.innerText;
-                    return '';
-                });
-                results.push({ link, snippet });
-                await newPage.close();
-            } catch (err) {
-                results.push({ link, snippet: 'Failed to scrape content.' });
-            }
-        }
-    } catch (err) {
-        console.error('Puppeteer DuckDuckGo search error:', err.message);
-    } finally {
-        if (browser) await browser.close();
-    }
-    // Scrape Google Fact Checker and merge results
-    const factCheckResults = await scrapeGoogleFactChecker(query);
-    console.log('factCheckResults CHECKED', factCheckResults);
-    return [...results, ...factCheckResults];
-}
-
-module.exports = { searchAndScrape }; 
+module.exports = { searchAndScrape };
