@@ -115,13 +115,21 @@ async function verifyClaimWithEvidence(claim, evidence, bertResult = null) {
             ? `\nML model pre-classification: "${bertResult.label}" with ${Math.round(bertResult.confidence * 100)}% confidence.`
             : '';
 
-        const prompt = `Given the following claim: "${claim}"${bertLine}
-And the following evidence from trusted news sources:
+        const prompt = `You are a fact-checker. Given the claim: "${claim}"${bertLine}
+And the following evidence from trusted news and fact-check sources:
 ${JSON.stringify(evidence, null, 2)}
 
-Does the given claim can occur in the given evidence? These sources are mostly about the image and video content that mislead the event details, They wont give the confirmation of the event, But they will give the information about the event.
-if you cant decided due to lack of information, search the internet for the event and give the result.
-Respond with one of: Occurred, Unlikely, Unverified. Also provide a short reasoning. Return JSON Object with keys: result, reasoning.`;
+Determine whether the claim itself is factually accurate, using the evidence above. If the evidence is insufficient, use your own knowledge to reach a conclusion where possible.
+
+Respond with exactly one of these four results:
+- "True": the evidence (or well-established fact) confirms the claim is accurate.
+- "False": the evidence (or well-established fact) contradicts or debunks the claim.
+- "Misleading": the claim has some factual basis but is presented out of context or in a deceptive way.
+- "Unverified": there is genuinely not enough information to determine truth or falsity either way.
+
+Critical rule: your "result" value MUST match the conclusion of your own "reasoning". If your reasoning explains that the claim is false or debunked, the result must be "False", never "True" or anything else. Do not choose "True" merely because the claim is a real topic being discussed or fact-checked — "True" means the claim's content is actually accurate.
+
+Return a JSON object with keys: result, reasoning.`;
         const text = await callGemini(prompt);
         const parsed = safeJsonParse(text);
         const verification = normalizeVerification(parsed, text);
