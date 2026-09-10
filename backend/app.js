@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
 const { router: verifyEventRouter, setWsClients } = require('./routes/verifyEvent');
 const authRouter = require('./routes/auth');
@@ -8,13 +10,34 @@ const connectDB = require('./utils/db');
 const { WebSocketServer } = require('ws');
 const http = require('http');
 
+// Fail fast rather than silently signing tokens with a guessable secret
+if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET environment variable is not set.');
+    process.exit(1);
+}
 
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
+// Allow a comma-separated list of origins, e.g. "https://truthseeker.vercel.app,http://localhost:5173"
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+    server,
+    verifyClient: (info, done) => {
+        const origin = info.origin;
+        if (!origin || allowedOrigins.includes(origin)) {
+            return done(true);
+        }
+        console.warn('Rejected WebSocket connection from disallowed origin:', origin);
+        return done(false, 403, 'Forbidden');
+    },
+});
 
 // Store connected clients
 const clients = new Set();
@@ -106,18 +129,36 @@ function sendToClient(clientId, message) {
 // Connect to MongoDB
 connectDB();
 
-// Rate limiter 
+// Rate limiter
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // limit each IP to 100 requests per windowMs
 });
 
+// Tighter limiter for auth routes to resist credential brute-forcing
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // limit each IP to 20 signup/login attempts per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+app.use(helmet());
 app.use(limiter);
 app.use(express.json());
-app.use(cors());
+app.use(mongoSanitize());
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow non-browser requests (no Origin header) and configured origins
+        if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+    },
+}));
 
 app.use('/api/verify-event', verifyEventRouter);
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authLimiter, authRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
