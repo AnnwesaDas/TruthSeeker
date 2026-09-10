@@ -33,12 +33,23 @@ def load_model():
     # Load tokenizer from the model folder
     tokenizer = AutoTokenizer.from_pretrained(MODEL_FOLDER)
 
-    # Load the fine-tuned model for sequence classification
-    model = AutoModelForSequenceClassification.from_pretrained(MODEL_FOLDER)
-    
+    # low_cpu_mem_usage avoids briefly holding two copies of the weights in
+    # memory during loading, which is what actually caused the OOM on Render's
+    # 512MB free tier (the spike happens at load time, not serving).
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_FOLDER, low_cpu_mem_usage=True
+    )
+
     # Set model to evaluation mode (disables dropout, batch norm updates, etc.)
     model.eval()
-    
+
+    # Dynamic quantization converts the model's Linear layers (the bulk of
+    # BERT's parameters) from 32-bit to 8-bit weights. Roughly a 3-4x memory
+    # reduction with negligible accuracy impact for CPU inference.
+    model = torch.quantization.quantize_dynamic(
+        model, {torch.nn.Linear}, dtype=torch.qint8
+    )
+
     print("Model loaded successfully!")
 
 
