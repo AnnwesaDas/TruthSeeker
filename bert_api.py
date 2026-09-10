@@ -15,22 +15,24 @@ app = Flask(__name__)
 model = None
 tokenizer = None
 
-# Define the model folder path
-MODEL_FOLDER = "bert-liar-model"
+# Local folder path for development, or a Hugging Face Hub repo id
+# (e.g. "yourusername/truthseeker-bert-liar") for a deployed instance.
+MODEL_FOLDER = os.environ.get("BERT_MODEL_ID", "bert-liar-model")
 
 
 def load_model():
     """
-    Load the fine-tuned BERT model and tokenizer from the local folder.
+    Load the fine-tuned BERT model and tokenizer, either from a local folder
+    or from the Hugging Face Hub (from_pretrained supports both transparently).
     This function is called once at startup to avoid reloading on every request.
     """
     global model, tokenizer
-    
+
     print(f"Loading model from {MODEL_FOLDER}...")
-    
+
     # Load tokenizer from the model folder
     tokenizer = AutoTokenizer.from_pretrained(MODEL_FOLDER)
-    
+
     # Load the fine-tuned model for sequence classification
     model = AutoModelForSequenceClassification.from_pretrained(MODEL_FOLDER)
     
@@ -38,6 +40,12 @@ def load_model():
     model.eval()
     
     print("Model loaded successfully!")
+
+
+# Load once at import time so this works both under `python bert_api.py`
+# (dev) and under a WSGI server like gunicorn (production), which imports
+# this module and never executes the `if __name__ == '__main__'` block.
+load_model()
 
 
 @app.route('/health', methods=['GET'])
@@ -117,8 +125,7 @@ def predict():
 
 
 if __name__ == '__main__':
-    # Load the model before starting the server
-    load_model()
-    
-    # Start Flask app on port 5001
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    # Render (and most PaaS platforms) assign the port via $PORT; default to
+    # 5001 for local development to match the Node backend's default BERT_API_URL.
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port, debug=False)
