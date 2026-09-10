@@ -8,9 +8,11 @@ const mongoose = require('mongoose');
 const VerificationEvent = require('../models/VerificationEvent');
 const { authenticateToken } = require('../utils/auth');
 
+const BERT_API_URL = process.env.BERT_API_URL || 'http://localhost:5001';
+
 async function getBertScore(claim) {
     try {
-        const response = await axios.post('http://localhost:5001/predict', { claim });
+        const response = await axios.post(`${BERT_API_URL}/predict`, { claim }, { timeout: 10000 });
         return response.data; // { label: "fake"/"real", confidence: 0.73 }
     } catch (err) {
         console.warn('BERT API unavailable:', err.message);
@@ -72,9 +74,9 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        const query = await buildSearchQuery(extraction, claim);
+        const { query, trustedDomains } = await buildSearchQuery(extraction, claim);
 
-        // 3. Scrape trusted sources
+        // 3. Search trusted sources
         sendWsMessage({
             type: 'status_update',
             message: 'Searching for fact-checking sources...',
@@ -82,7 +84,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        const scrapedResults = await searchAndScrape(query);
+        const scrapedResults = await searchAndScrape(query, trustedDomains);
         console.log('scrapedResults', scrapedResults);
 
         // 4. Verify with Gemini
