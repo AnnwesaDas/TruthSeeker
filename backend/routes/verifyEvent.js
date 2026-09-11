@@ -7,6 +7,7 @@ const { searchAndScrape } = require('../utils/scraper');
 const mongoose = require('mongoose');
 const VerificationEvent = require('../models/VerificationEvent');
 const { authenticateToken } = require('../utils/auth');
+const { getDemoResponse, listDemoClaims } = require('../data/demoResponses');
 
 const BERT_API_URL = process.env.BERT_API_URL || 'http://localhost:5001';
 
@@ -85,12 +86,92 @@ const sendWsMessage = (message) => {
     }
 };
 
+const DEMO_STAGES = [
+    { message: 'Extracting event information...', progress: 20 },
+    { message: 'Building search query...', progress: 40 },
+    { message: 'Searching for fact-checking sources...', progress: 60 },
+    { message: 'Analyzing evidence with AI...', progress: 80 },
+    { message: 'Saving results...', progress: 90 },
+];
+
+async function handleCachedDemoRequest(claim, req, res) {
+    sendWsMessage({
+        type: 'verification_started',
+        message: 'Starting verification process...',
+        claim,
+        timestamp: new Date().toISOString()
+    });
+
+    const cached = getDemoResponse(claim);
+    if (!cached) {
+        sendWsMessage({
+            type: 'error',
+            message: 'Demo mode is limited to pre-verified claims.',
+            timestamp: new Date().toISOString()
+        });
+        return res.status(400).json({
+            error: "Demo mode is active and this claim isn't pre-verified.",
+            availableDemoClaims: listDemoClaims()
+        });
+    }
+
+    // Small artificial delay per stage so the WebSocket progress still feels
+    // real during a live demo, instead of jumping straight to 100%.
+    for (const stage of DEMO_STAGES) {
+        sendWsMessage({
+            type: 'status_update',
+            message: stage.message,
+            progress: stage.progress,
+            timestamp: new Date().toISOString()
+        });
+        await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+
+    const savedEvent = await VerificationEvent.create({
+        claim,
+        extraction: cached.extraction,
+        evidence: cached.evidence,
+        verification: cached.verification,
+        userEmail: req.user.email
+    });
+
+    sendWsMessage({
+        type: 'verification_complete',
+        message: 'Verification complete!',
+        progress: 100,
+        timestamp: new Date().toISOString()
+    });
+    sendWsMessage({
+        type: 'status_update',
+        message: 'Verification complete!',
+        progress: 100,
+        timestamp: new Date().toISOString()
+    });
+
+    return res.json({
+        claim,
+        extraction: cached.extraction,
+        evidence: cached.evidence,
+        verification: cached.verification,
+        bertResult: cached.bertResult,
+        id: savedEvent._id
+    });
+}
+
 router.post('/', authenticateToken, async (req, res, next) => {
     console.log('Received request');
     try {
         const claim = String(req.body?.claim || '').trim();
         if (!claim) return res.status(400).json({ error: 'Missing claim' });
         if (claim.length > 1000) return res.status(400).json({ error: 'Claim is too long (max 1000 characters)' });
+
+        // Demo-safe mode: serves a real, previously-verified response for a
+        // small set of known claims instead of calling any live API. Lets a
+        // demo (e.g. an interview) run without depending on remaining quota.
+        if (process.env.USE_CACHED_DEMO === 'true') {
+            return await handleCachedDemoRequest(claim, req, res);
+        }
+
         const bertResult = await getBertScore(claim);
         console.log('BERT score:', bertResult);
 
