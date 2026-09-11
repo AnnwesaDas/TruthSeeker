@@ -9,10 +9,6 @@ import {
     Zap,
     Brain,
     Target,
-    Users,
-    Globe,
-    TrendingUp,
-    Award,
     Database,
     Activity,
     Star,
@@ -28,18 +24,14 @@ import MeshGradientBackground from "./MeshGradientBackground"
 import BlobVideoBackground from "./BlobVideoBackground"
 import { useEffect, useRef, useState } from "react"
 import { motion, useAnimation } from "framer-motion"
+import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export default function HomePage() {
+    useDocumentTitle("TruthSeeker - AI-Powered Claim Verification")
+
     const sectionsRef = useRef ([])
     const pageRef = useRef(0)
     const coolTimeRef = useRef(true)
-
-    const stats = [
-        { icon: Users, value: "10M+", label: "Claims Verified", color: "text-[#8db5de]" },
-        { icon: Globe, value: "150+", label: "Countries Covered", color: "text-[#7f54cd]" },
-        { icon: TrendingUp, value: "99.9%", label: "Accuracy Rate", color: "text-[#35257d]" },
-        { icon: Award, value: "24/7", label: "Real-time Analysis", color: "text-[#e0e9f6]" },
-    ]
 
     const features = [
         {

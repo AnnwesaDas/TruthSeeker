@@ -7,14 +7,19 @@ import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../lib/config';
+import useDocumentTitle from '../hooks/useDocumentTitle';
+import TurnstileWidget from './TurnstileWidget';
 
 const LoginPage = () => {
+  useDocumentTitle('Log In - TruthSeeker');
+
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -36,7 +41,7 @@ const LoginPage = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, turnstileToken }),
       });
 
       const data = await response.json();
@@ -110,6 +115,8 @@ const LoginPage = () => {
                   placeholder="Enter your password"
                 />
               </div>
+
+              <TurnstileWidget onVerify={setTurnstileToken} />
 
               <Button
                 type="submit"

@@ -2,11 +2,16 @@
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom"
 import { AnimatePresence } from "framer-motion"
 import { useState, useEffect } from "react"
+import { Menu, X } from "lucide-react"
 import HomePage from "./components/HomePage"
 import VerifyPage from "./components/VerifyPage"
 import LogsPage from "./components/LogsPage"
 import LoginPage from "./components/LoginPage"
 import SignupPage from "./components/SignupPage"
+import PrivacyPolicy from "./components/PrivacyPolicy"
+import TermsAndConditions from "./components/TermsAndConditions"
+import NotFoundPage from "./components/NotFoundPage"
+import Footer from "./components/Footer"
 import PageTransition from "./components/PageTransition"
 import LoadingTransition from "./components/LoadingTransition"
 import ParticleBackground from "./components/ui/ParticleBackground"
@@ -16,9 +21,11 @@ import Logo from "./assets/logo.png"
 const AppContent = () => {
   const { user, logout, isAuthenticated } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
+    setIsMobileMenuOpen(false);
   };
 
   // Handle loading state for navigation
@@ -32,7 +39,7 @@ const AppContent = () => {
   }, []);
 
   return (
-    <div className="relative overflow-x-hidden font-turret-road" style={{ background: "#070e16" }}>
+    <div className="relative overflow-x-hidden font-turret-road flex flex-col min-h-screen" style={{ background: "#070e16" }}>
       {/* Loading Transition */}
       <LoadingTransition isLoading={isLoading} />
 
@@ -45,7 +52,7 @@ const AppContent = () => {
             <div className="flex items-center justify-between">
             <div className="flex items-center justify-center space-x-4">
               {/* Shield icon and title */}
-              <div className="flex items-center justify-center space-x-4">
+              <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center justify-center space-x-4">
                 <img src={Logo} alt="Logo" className="w-16 h-16" />
                 <span
                   className="text-2xl font-bold text-white font-inter"
@@ -53,13 +60,15 @@ const AppContent = () => {
                 >
                   TRUTH SEEKER
                 </span>
-              </div>
+              </Link>
 
-              {isAuthenticated && <span className="absolute top-5 right-1/2 text-[#8db5de] text-lg">
+              {isAuthenticated && <span className="absolute top-5 right-1/2 text-[#8db5de] text-lg hidden md:inline">
                 Welcome, {user?.name}
               </span>}
             </div>
-            <div className="flex items-center float-right space-x-12 md:flex">
+
+            {/* Desktop nav links */}
+            <div className="hidden md:flex items-center float-right space-x-12">
               <Link to="/" className="text-lg font-bold text-white bg-clip-text">
                 Home
               </Link>
@@ -90,7 +99,48 @@ const AppContent = () => {
             </div>
               )}
             </div>
+
+            {/* Mobile hamburger toggle */}
+            <button
+              className="md:hidden text-white p-2"
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+              aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
+            >
+              {isMobileMenuOpen ? <X className="h-7 w-7" /> : <Menu className="h-7 w-7" />}
+            </button>
           </div>
+
+          {/* Mobile nav panel */}
+          {isMobileMenuOpen && (
+            <div className="md:hidden flex flex-col items-start space-y-4 pt-6 pb-4">
+              <Link to="/" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold text-white">
+                Home
+              </Link>
+              <Link to="/verify" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold text-white">
+                Verify
+              </Link>
+              <Link to="/logs" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold text-white">
+                Logs
+              </Link>
+              {isAuthenticated ? (
+                <button
+                  onClick={handleLogout}
+                  className="text-lg font-bold text-[#8db5de] hover:text-[#7f54cd] transition-colors"
+                >
+                  Logout
+                </button>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold text-white hover:text-[#7f54cd] transition-colors">
+                    Login
+                  </Link>
+                  <Link to="/signup" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold text-white hover:text-[#7f54cd] transition-colors">
+                    Signup
+                  </Link>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </nav>
 
@@ -98,35 +148,54 @@ const AppContent = () => {
         <ParticleBackground />
                 </div>
 
-      <AnimatePresence mode="wait">
-        <Routes>
-          <Route path="/" element={
-            <PageTransition>
-              <HomePage />
-            </PageTransition>
-          } />
-          <Route path="/verify" element={
-            <PageTransition>
-              <VerifyPage />
-            </PageTransition>
-          } />
-          <Route path="/logs" element={
-            <PageTransition>
-              <LogsPage />
-            </PageTransition>
-          } />
-          <Route path="/login" element={
-            <PageTransition>
-              <LoginPage />
-            </PageTransition>
-          } />
-          <Route path="/signup" element={
-            <PageTransition>
-              <SignupPage />
-            </PageTransition>
-          } />
-        </Routes>
-      </AnimatePresence>
+      <div className="flex-1">
+        <AnimatePresence mode="wait">
+          <Routes>
+            <Route path="/" element={
+              <PageTransition>
+                <HomePage />
+              </PageTransition>
+            } />
+            <Route path="/verify" element={
+              <PageTransition>
+                <VerifyPage />
+              </PageTransition>
+            } />
+            <Route path="/logs" element={
+              <PageTransition>
+                <LogsPage />
+              </PageTransition>
+            } />
+            <Route path="/login" element={
+              <PageTransition>
+                <LoginPage />
+              </PageTransition>
+            } />
+            <Route path="/signup" element={
+              <PageTransition>
+                <SignupPage />
+              </PageTransition>
+            } />
+            <Route path="/privacy" element={
+              <PageTransition>
+                <PrivacyPolicy />
+              </PageTransition>
+            } />
+            <Route path="/terms" element={
+              <PageTransition>
+                <TermsAndConditions />
+              </PageTransition>
+            } />
+            <Route path="*" element={
+              <PageTransition>
+                <NotFoundPage />
+              </PageTransition>
+            } />
+          </Routes>
+        </AnimatePresence>
+      </div>
+
+      <Footer />
     </div>
   );
 };

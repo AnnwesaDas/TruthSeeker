@@ -1,17 +1,29 @@
 const express = require('express');
 const User = require('../models/User');
 const { generateToken, authenticateToken } = require('../utils/auth');
+const { verifyTurnstile } = require('../utils/turnstile');
 
 const router = express.Router();
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Signup route
 router.post('/signup', async (req, res) => {
     try {
-        const { email, password, name } = req.body;
+        const { email, password, name, turnstileToken } = req.body;
 
         // Validate input
         if (!email || !password || !name) {
             return res.status(400).json({ error: 'All fields are required' });
+        }
+
+        if (!EMAIL_REGEX.test(email)) {
+            return res.status(400).json({ error: 'Please enter a valid email address' });
+        }
+
+        const isHuman = await verifyTurnstile(turnstileToken);
+        if (!isHuman) {
+            return res.status(400).json({ error: 'Bot verification failed. Please try again.' });
         }
 
         if (password.length < 6) {
@@ -54,11 +66,16 @@ router.post('/signup', async (req, res) => {
 // Login route
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password, turnstileToken } = req.body;
 
         // Validate input
         if (!email || !password) {
             return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        const isHuman = await verifyTurnstile(turnstileToken);
+        if (!isHuman) {
+            return res.status(400).json({ error: 'Bot verification failed. Please try again.' });
         }
 
         // Find user

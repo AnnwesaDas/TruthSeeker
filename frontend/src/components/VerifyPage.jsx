@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useWebSocket } from "../hooks/useWebSocket"
+import useDocumentTitle from "../hooks/useDocumentTitle"
 import { API_URL } from "../lib/config"
 import {
   Search,
@@ -26,6 +27,8 @@ import {
 } from "lucide-react"
 
 export default function VerifyPage() {
+  useDocumentTitle("Verify a Claim - TruthSeeker")
+
   const [claim, setClaim] = useState("")
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)

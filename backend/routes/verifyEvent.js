@@ -90,6 +90,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
     try {
         const claim = String(req.body?.claim || '').trim();
         if (!claim) return res.status(400).json({ error: 'Missing claim' });
+        if (claim.length > 1000) return res.status(400).json({ error: 'Claim is too long (max 1000 characters)' });
         const bertResult = await getBertScore(claim);
         console.log('BERT score:', bertResult);
 
@@ -101,7 +102,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        // 1. Extract info from claim
+        // 1. Extract info from claim + trusted domains (one combined Gemini call)
         sendWsMessage({
             type: 'status_update',
             message: 'Extracting event information...',
@@ -109,7 +110,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        const extraction = await gemini.extractEventInfo(claim);
+        const extraction = await gemini.extractEventAndSources(claim);
 
         if (!extraction) return res.status(500).json({ error: 'Failed to extract event info' });
 
@@ -121,7 +122,8 @@ router.post('/', authenticateToken, async (req, res, next) => {
             timestamp: new Date().toISOString()
         });
 
-        const { query, trustedDomains } = await buildSearchQuery(extraction, claim);
+        const query = buildSearchQuery(extraction, claim);
+        const trustedDomains = extraction.trustedDomains || [];
 
         // 3. Search trusted sources
         sendWsMessage({

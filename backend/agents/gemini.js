@@ -24,14 +24,16 @@ function normalizeExtraction(parsed, fallbackClaim) {
         return {
             event: fallbackClaim || 'Unknown event',
             location: 'Unknown',
-            time: 'Unknown'
+            time: 'Unknown',
+            trustedDomains: []
         };
     }
 
     return {
         event: parsed.event || fallbackClaim || 'Unknown event',
         location: parsed.location || 'Unknown',
-        time: parsed.time || 'Unknown'
+        time: parsed.time || 'Unknown',
+        trustedDomains: normalizeDomains(parsed.trustedDomains).slice(0, 8)
     };
 }
 
@@ -77,37 +79,33 @@ async function callGemini(prompt) {
     return getTextFromGeminiResponse(response);
 }
 
-async function extractEventInfo(claim) {
+// Combines what used to be two separate Gemini calls (extraction, then
+// trusted-domain lookup) into one, to stay within the free-tier daily
+// request quota — each claim now costs 2 Gemini calls instead of 3.
+async function extractEventAndSources(claim) {
     try {
-        const prompt = `Extract the event name, location, and time from this claim: "${claim}". Respond in JSON with keys: event, location, time.`;
+        const prompt = `Given this claim: "${claim}"
+
+1. Extract the event name, location, and time referenced in the claim.
+2. List up to 8 reputable news or official domains (e.g. bbc.com, reuters.com, gov.in) that would be trusted sources to verify this specific claim.
+
+Respond with a JSON object with keys: event, location, time, trustedDomains (an array of domain names only, no explanation).`;
         const text = await callGemini(prompt);
         const parsed = safeJsonParse(text);
         const extraction = normalizeExtraction(parsed, claim);
-        console.log('Gemini extractEventInfo response:', extraction);
+        console.log('Gemini extractEventAndSources response:', extraction);
         return extraction;
     } catch (err) {
-        console.error('Gemini extractEventInfo error:', err.message);
+        console.error('Gemini extractEventAndSources error:', err.message);
         return {
             event: claim || 'Unknown event',
             location: 'Unknown',
-            time: 'Unknown'
+            time: 'Unknown',
+            trustedDomains: []
         };
     }
 }
 
-async function getTrustedSourcesForClaim(claim) {
-    console.log('Getting trusted sources for claim IN:', claim);
-    try {
-        const prompt = `Given the following claim: "${claim}", list the most relevant and reputable news or official domains (e.g., bbc.com, reuters.com, gov.in) that would be trusted sources to verify this claim. Respond with a JSON array of domain names only (no explanation).`;
-        const text = await callGemini(prompt);
-        console.log('Gemini getTrustedSourcesForClaim response:', text);
-        const parsed = safeJsonParse(text);
-        return normalizeDomains(parsed).slice(0, 8);
-    } catch (err) {
-        console.error('Gemini getTrustedSourcesForClaim error:', err.message);
-        return [];
-    }
-}
 async function verifyClaimWithEvidence(claim, evidence, bertResult = null) {
     console.log('Gemini verifyClaimWithEvidence IN:', claim, evidence);
     try {
@@ -144,4 +142,4 @@ Return a JSON object with keys: result, reasoning.`;
     }
 }
 
-module.exports = { extractEventInfo, verifyClaimWithEvidence, getTrustedSourcesForClaim };    
+module.exports = { extractEventAndSources, verifyClaimWithEvidence };

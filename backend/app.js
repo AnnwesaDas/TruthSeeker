@@ -169,10 +169,12 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Error handling middleware 
+// Error handling middleware
 app.use((err, req, res, next) => {
     console.error(err.stack);
-    res.status(500).json({ error: err.message || 'Internal Server Error' });
+    // Never send internal error details (stack traces, DB/library error
+    // messages) to the client -- log them server-side only.
+    res.status(500).json({ error: 'Internal Server Error' });
 });
 
 server.listen(PORT, () => {

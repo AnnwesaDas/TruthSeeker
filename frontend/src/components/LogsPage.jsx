@@ -2,8 +2,11 @@ import React, { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2, AlertTriangle, CheckCircle, XCircle, ExternalLink } from "lucide-react"
 import { API_URL } from "../lib/config"
+import useDocumentTitle from "../hooks/useDocumentTitle"
 
 export default function LogsPage() {
+  useDocumentTitle("Verification History - TruthSeeker")
+
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
