@@ -7,8 +7,12 @@ import { Label } from './ui/label';
 import { Alert, AlertDescription } from './ui/alert';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../lib/config';
+import useDocumentTitle from '../hooks/useDocumentTitle';
+import TurnstileWidget from './TurnstileWidget';
 
 const SignupPage = () => {
+  useDocumentTitle('Sign Up - TruthSeeker');
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -17,6 +21,7 @@ const SignupPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -55,7 +60,8 @@ const SignupPage = () => {
         body: JSON.stringify({
           name: formData.name,
           email: formData.email,
-          password: formData.password
+          password: formData.password,
+          turnstileToken
         }),
       });
 
@@ -162,6 +168,8 @@ const SignupPage = () => {
                   placeholder="Confirm your password"
                 />
               </div>
+
+              <TurnstileWidget onVerify={setTurnstileToken} />
 
               <Button
                 type="submit"

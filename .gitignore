@@ -36,3 +36,7 @@ dist-ssr
 # Large ML model files
 bert-liar-model/
 
+# Python bytecode cache
+__pycache__/
+*.pyc
+

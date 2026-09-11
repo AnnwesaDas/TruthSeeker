@@ -1,33 +1,53 @@
-# Truth Seeker - Authentication System
+# TruthSeeker
 
-This application now includes a complete authentication system with login and signup functionality, and **user-specific verification logs**.
+TruthSeeker takes a free-text claim and returns a verdict — **True / False / Misleading / Unverified** — backed by real evidence and a hybrid AI pipeline, with live progress streamed to the browser over WebSockets as each stage runs.
 
-## Features Added
+Live demo: https://claim-verifier-4sjg.vercel.app
 
-### Backend Authentication
+## Architecture
 
-- **User Model**: MongoDB schema with email, password (hashed), name, and timestamps
-- **JWT Authentication**: Secure token-based authentication with 7-day expiration
-- **Password Hashing**: Bcrypt for secure password storage
-- **API Endpoints**:
-  - `POST /api/auth/signup` - Create new account
-  - `POST /api/auth/login` - Sign in to existing account
-  - `GET /api/auth/profile` - Get user profile (protected route)
+A submitted claim moves through five stages. Each stage's start is broadcast to the frontend over WebSocket so the UI can show live progress (extracting → building query → searching → analyzing → done) instead of a single opaque loading spinner.
 
-### Frontend Authentication
+```mermaid
+flowchart TD
+    A[User submits claim] --> B["Gemini: extract event / location / time"]
+    B --> C["Gemini: build search query + trusted domains"]
+    C --> D["Google Fact Check Tools API"]
+    C --> E["Google Programmable Search (optional)"]
+    B --> F["Fine-tuned BERT classifier<br/>(real / fake, confidence)"]
+    D --> G[Evidence]
+    E --> G
+    G --> H["Gemini: fuse BERT score + evidence<br/>into a final verdict"]
+    F --> H
+    H --> I["Verdict + reasoning"]
+    I --> J[(MongoDB — stored per user)]
+```
 
-- **Login Page**: Modern UI with email/password form
-- **Signup Page**: Registration form with name, email, password, and confirmation
-- **Authentication Context**: React context for managing user state
-- **Protected Navigation**: Dynamic navigation based on authentication status
-- **User Welcome**: Displays user name when logged in
+**Why a hybrid pipeline, not just one model call:**
 
-### User-Specific Verification Logs
+- A single LLM call over a claim with no evidence is easy to fool and impossible to audit. TruthSeeker instead retrieves real fact-check articles and news evidence *first*, then asks the LLM to reason over that evidence rather than guess from parametric memory alone.
+- A fine-tuned classifier (BERT, trained on the LIAR dataset — see below) adds a second, independent signal grounded in the statement's own phrasing and framing, which the LLM fusion step weighs alongside the retrieved evidence.
+- Every external call (Gemini, Fact Check Tools API, the BERT service) degrades gracefully: if any one is unavailable or returns nothing, the pipeline still produces a verdict from whatever signal it does have, rather than failing outright.
 
-- **Personal Logs**: Each user can only see their own verification history
-- **Protected API**: All verification endpoints require authentication
-- **User Association**: Verification events are automatically associated with the logged-in user's email
-- **Secure Access**: Users must be logged in to submit claims or view logs
+## Machine Learning Model
+
+The classification model is a `bert-base-uncased` checkpoint fine-tuned on the [LIAR dataset](https://www.cs.ucsb.edu/~william/data/liar_dataset.zip) (Wang, 2017 — *"Liar, Liar Pants on Fire": A New Benchmark Dataset for Fake News Detection*), a widely-used benchmark of ~12,800 short political statements labeled on a six-point truthfulness scale.
+
+- **Label collapse**: the six original labels (`pants-fire`, `false`, `barely-true`, `half-true`, `mostly-true`, `true`) are collapsed to binary `fake` / `real` at the midpoint, to match the pipeline's use of the model as one input signal rather than a standalone verdict.
+- **Training**: 3 epochs, `bert-base-uncased`, fine-tuned via Hugging Face `Trainer` — see [`training/train_bert_liar.ipynb`](training/train_bert_liar.ipynb) (Colab-ready, GPU required).
+- **Held-out test set results**: **65.2% accuracy, 71.5% F1**. This is in line with published text-only baselines on LIAR — the dataset asks a model to judge truthfulness from a short, isolated statement with no surrounding context or evidence, which has a well-documented ceiling in the literature. This is also the practical justification for not relying on the classifier alone: it is one signal fused with real retrieved evidence, not the final word.
+- **Serving**: the fine-tuned weights are published on the [Hugging Face Hub](https://huggingface.co/annwesa65/truthseeker-bert-liar) and served from a small Gradio app on Hugging Face Spaces (`bert_api.py`), loaded with `low_cpu_mem_usage=True` and dynamic INT8 quantization to fit a free CPU instance.
+
+## Security Features
+
+- **Password hashing** — bcrypt, 10 salt rounds
+- **JWT authentication** — 7-day tokens; the server refuses to start if `JWT_SECRET` is unset, rather than falling back to a guessable default
+- **CORS locked to configured origins** — both the HTTP API and the WebSocket upgrade reject any origin not explicitly listed in `FRONTEND_ORIGIN`
+- **`helmet`** — standard secure HTTP headers
+- **`express-mongo-sanitize`** — strips Mongo operator injection from request input
+- **Tiered rate limiting** — a global limiter on all routes, plus a stricter limiter specifically on `/api/auth` to resist credential brute-forcing
+- **User data isolation** — verification history is scoped per authenticated user; every read/write is filtered by the requester's own email
+- **Zero known dependency vulnerabilities** (`npm audit`) — Puppeteer, previously used for scraping, was removed entirely in favor of official APIs, which also removed its vulnerable transitive dependency tree
 
 ## Setup Instructions
 
@@ -45,15 +65,20 @@ This application now includes a complete authentication system with login and si
    npm install
    ```
 
-3. Create a `.env` file in the backend directory with:
+3. Create a `.env` file in the backend directory (see `backend/.env.example` for the full list with descriptions):
 
    ```
    MONGODB_URI=your_mongodb_connection_string
-   JWT_SECRET=your_jwt_secret_key
-   PORT=3000
+   JWT_SECRET=your_long_random_jwt_secret
+   GEMINI_API_KEY=your_gemini_api_key
+   GEMINI_MODEL=gemini-2.5-flash
+   GOOGLE_FACTCHECK_API_KEY=your_google_factcheck_api_key
+   FRONTEND_ORIGIN=http://localhost:5173
+   BERT_API_URL=http://localhost:5001
    ```
 
 4. Start the backend server:
+
    ```bash
    npm start
    ```
@@ -76,6 +101,19 @@ This application now includes a complete authentication system with login and si
    ```bash
    npm run dev
    ```
+
+### BERT model service (optional locally, required in production)
+
+The Node backend calls out to a separately hosted BERT inference service; without it, `BERT_API_URL` simply fails gracefully and the pipeline falls back to evidence + Gemini alone. To run or redeploy the model service itself, see `bert_api.py`, `requirements.txt`, and `training/train_bert_liar.ipynb` at the repo root.
+
+## Deployment
+
+| Component | Hosted on |
+|---|---|
+| Frontend (React + Vite) | Vercel |
+| Backend (Node/Express + WebSocket) | Render |
+| BERT model service (Gradio) | Hugging Face Spaces |
+| Database | MongoDB Atlas |
 
 ## Usage
 
@@ -195,7 +233,8 @@ Authorization: Bearer jwt_token_here
   "claim": "There was an earthquake in California yesterday",
   "extraction": { "event": "earthquake", "location": "California", "time": "yesterday" },
   "evidence": [...],
-  "verification": { "result": "true", "reasoning": "..." },
+  "verification": { "result": "True", "reasoning": "..." },
+  "bertResult": { "label": "real", "confidence": 0.74 },
   "id": "verification_event_id"
 }
 ```
@@ -219,74 +258,53 @@ Authorization: Bearer jwt_token_here
     "claim": "There was an earthquake in California yesterday",
     "extraction": { "event": "earthquake", "location": "California", "time": "yesterday" },
     "evidence": [...],
-    "verification": { "result": "true", "reasoning": "..." },
+    "verification": { "result": "True", "reasoning": "..." },
     "userEmail": "john@example.com",
     "createdAt": "2024-01-01T00:00:00.000Z"
   }
 ]
 ```
 
-## Security Features
-
-- **Password Hashing**: All passwords are hashed using bcrypt
-- **JWT Tokens**: Secure authentication with JSON Web Tokens
-- **Input Validation**: Server-side validation for all inputs
-- **Error Handling**: Comprehensive error handling and user feedback
-- **Rate Limiting**: API rate limiting to prevent abuse
-- **User Isolation**: Each user can only access their own data
-- **Protected Routes**: All verification endpoints require authentication
-
-## User Experience Features
-
-- **Login Prompts**: Clear prompts when users try to access protected features without authentication
-- **Seamless Navigation**: Dynamic navigation that adapts to authentication status
-- **Personal Dashboard**: Each user sees only their verification history
-- **Error Handling**: User-friendly error messages and guidance
-
-## Dependencies Added
-
-### Backend
-
-- `bcryptjs`: Password hashing
-- `jsonwebtoken`: JWT token generation and verification
-
-### Frontend
-
-- React Context for state management
-- Custom UI components for forms and alerts
-
 ## File Structure
 
 ```
 ├── backend/
+│   ├── agents/
+│   │   └── gemini.js            # Extraction, search-query building, evidence fusion
 │   ├── models/
 │   │   ├── User.js
-│   │   └── VerificationEvent.js (updated with userEmail field)
+│   │   └── VerificationEvent.js
 │   ├── routes/
 │   │   ├── auth.js
-│   │   └── verifyEvent.js (updated with authentication)
+│   │   └── verifyEvent.js       # Orchestrates the full verification pipeline
 │   ├── utils/
-│   │   └── auth.js
-│   └── app.js
+│   │   ├── auth.js
+│   │   ├── db.js
+│   │   ├── scraper.js           # Fact Check Tools API + optional Custom Search
+│   │   └── searchQueryBuilder.js
+│   ├── app.js                   # Express app, WebSocket server, security middleware
+│   └── .env.example
+├── bert_api.py                  # BERT inference service (Gradio, hosted on HF Spaces)
+├── requirements.txt              # Python deps for bert_api.py
+├── training/
+│   └── train_bert_liar.ipynb    # Colab notebook: fine-tune + push to Hugging Face Hub
 └── frontend/
     ├── src/
     │   ├── components/
-    │   │   ├── LoginPage.jsx
-    │   │   ├── SignupPage.jsx
-    │   │   ├── LandingPage.jsx (updated with auth)
-    │   │   ├── LogsPage.jsx (updated with auth)
+    │   │   ├── LoginPage.jsx / SignupPage.jsx
+    │   │   ├── LandingPage.jsx / VerifyPage.jsx / LogsPage.jsx
     │   │   └── ui/
-    │   │       ├── input.jsx
-    │   │       └── label.jsx
     │   ├── context/
     │   │   └── AuthContext.jsx
+    │   ├── lib/
+    │   │   └── config.js        # API_URL / WS_URL resolution
     │   └── App.jsx
     └── package.json
 ```
 
 ## Database Changes
 
-The `VerificationEvent` model has been updated to include a `userEmail` field, ensuring that each verification event is associated with the user who submitted it. This allows for:
+The `VerificationEvent` model includes a `userEmail` field, associating each verification event with the user who submitted it. This allows for:
 
 - **User-specific logs**: Each user only sees their own verification history
 - **Data isolation**: Complete separation of user data

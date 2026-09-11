@@ -1,14 +1,13 @@
 require('dotenv').config();
 const {
-  extractEventInfo,
-  getTrustedSourcesForClaim,
+  extractEventAndSources,
   verifyClaimWithEvidence,
 } = require('../agents/gemini');
 
 async function testAPIConnectivity() {
   try {
     const testClaim = 'A meteor struck Paris on February 15, 2026';
-    const result = await extractEventInfo(testClaim);
+    const result = await extractEventAndSources(testClaim);
     console.log('API connectivity ok:', Boolean(result));
     return true;
   } catch (err) {
@@ -17,26 +16,14 @@ async function testAPIConnectivity() {
   }
 }
 
-async function testExtractEventInfo() {
+async function testExtractEventAndSources() {
   try {
     const testClaim = 'The World Cup 2026 will be held in USA from June 15 to July 15';
-    const result = await extractEventInfo(testClaim);
+    const result = await extractEventAndSources(testClaim);
     console.log('Extract output:', result);
-    return Boolean(result && result !== 'Unverified: Error during verification.');
+    return Boolean(result && result.event) && Array.isArray(result.trustedDomains);
   } catch (err) {
     console.error('Extract test failed:', err.message);
-    return false;
-  }
-}
-
-async function testGetTrustedSources() {
-  try {
-    const testClaim = 'Biden announces new climate policy';
-    const sources = await getTrustedSourcesForClaim(testClaim);
-    console.log('Sources count:', Array.isArray(sources) ? sources.length : 0);
-    return Array.isArray(sources) && sources.length > 0;
-  } catch (err) {
-    console.error('Sources test failed:', err.message);
     return false;
   }
 }
@@ -61,8 +48,7 @@ async function testVerifyClaim() {
 async function runAllChecks() {
   const results = [];
   results.push(await testAPIConnectivity());
-  results.push(await testExtractEventInfo());
-  results.push(await testGetTrustedSources());
+  results.push(await testExtractEventAndSources());
   results.push(await testVerifyClaim());
 
   const passed = results.filter(Boolean).length;
