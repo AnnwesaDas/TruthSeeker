@@ -10,10 +10,57 @@ const { authenticateToken } = require('../utils/auth');
 
 const BERT_API_URL = process.env.BERT_API_URL || 'http://localhost:5001';
 
+// The hosted BERT model runs as a Gradio app (Hugging Face Spaces), which
+// uses a two-step call protocol instead of a plain POST/response:
+//   1. POST /gradio_api/call/predict {data:[claim]} -> {event_id}
+//   2. GET  /gradio_api/call/predict/<event_id>      -> SSE stream ending in
+//      "event: complete\ndata: [{label, confidence}]"
 async function getBertScore(claim) {
     try {
-        const response = await axios.post(`${BERT_API_URL}/predict`, { claim }, { timeout: 10000 });
-        return response.data; // { label: "fake"/"real", confidence: 0.73 }
+        const postResp = await axios.post(
+            `${BERT_API_URL}/gradio_api/call/predict`,
+            { data: [claim] },
+            { timeout: 10000 }
+        );
+        const eventId = postResp.data.event_id;
+
+        const streamResp = await axios.get(
+            `${BERT_API_URL}/gradio_api/call/predict/${eventId}`,
+            { responseType: 'stream', timeout: 20000 }
+        );
+
+        return await new Promise((resolve, reject) => {
+            let buffer = '';
+            const timer = setTimeout(() => {
+                streamResp.data.destroy();
+                reject(new Error('BERT prediction timed out'));
+            }, 20000);
+
+            streamResp.data.on('data', (chunk) => {
+                buffer += chunk.toString();
+                const lines = buffer.split('\n');
+                for (const line of lines) {
+                    if (!line.startsWith('data:')) continue;
+                    try {
+                        const payload = JSON.parse(line.slice(5).trim());
+                        if (Array.isArray(payload) && payload[0]) {
+                            clearTimeout(timer);
+                            resolve(payload[0]);
+                        }
+                    } catch {
+                        // Incomplete JSON chunk, keep buffering
+                    }
+                }
+            });
+            streamResp.data.on('end', () => {
+                clearTimeout(timer);
+                reject(new Error('BERT stream ended without a result'));
+            });
+            streamResp.data.on('error', (err) => {
+                clearTimeout(timer);
+                reject(err);
+            });
+        });
     } catch (err) {
         console.warn('BERT API unavailable:', err.message);
         return { label: 'unknown', confidence: 0 };
